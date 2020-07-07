@@ -7,11 +7,6 @@ resource "aws_lambda_function" "loader" {
   runtime       = "nodejs10.x"
   memory_size   = 512
   timeout       = 900
-  environment {
-    variables = {
-      "DEBUG" = "true"
-    }
-  }
 }
 
 resource "aws_lambda_permission" "allow_bucket" {
