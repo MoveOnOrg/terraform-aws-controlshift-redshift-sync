@@ -42,13 +42,13 @@ data "template_file" "loader_config_full_item" {
   vars = {
     kind = "full"
     bulk_data_table = each.key
-    redshift_endpoint = var.redshift_dns_name
+    redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
     redshift_database_name: var.redshift_database_name
-    redshift_port = var.redshift_port
+    redshift_port = data.aws_redshift_cluster.sync_data_target.port
     redshift_username = var.redshift_username
     redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
     schema = var.redshift_schema
-    s3_bucket = aws_s3_bucket.receiver.bucket
+    s3_bucket = "agra-data-exports-${var.controlshift_environment}"
     manifest_bucket = aws_s3_bucket.manifest.bucket
     manifest_prefix = var.manifest_prefix
     failed_manifest_prefix = var.failed_manifest_prefix
@@ -88,13 +88,13 @@ data "template_file" "loader_config_incremental_item" {
   vars = {
     kind = "incremental"
     bulk_data_table = each.key
-    redshift_endpoint = var.redshift_dns_name
+    redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
     redshift_database_name: var.redshift_database_name
-    redshift_port = var.redshift_port
+    redshift_port = data.aws_redshift_cluster.sync_data_target.port
     redshift_username = var.redshift_username
     redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
     schema = var.redshift_schema
-    s3_bucket = aws_s3_bucket.receiver.bucket
+    s3_bucket = "agra-data-exports-${var.controlshift_environment}"
     manifest_bucket = aws_s3_bucket.manifest.bucket
     manifest_prefix = var.manifest_prefix
     failed_manifest_prefix = var.failed_manifest_prefix

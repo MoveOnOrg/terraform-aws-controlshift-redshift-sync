@@ -7,6 +7,6 @@
 
 # .tfvars files
 *.tfvars
-receiver/invoker.zip
-receiver/receiver.zip
+lambdas/*.zip
 .idea/
+.DS_Store

@@ -6,8 +6,8 @@ data "archive_file" "invoker_zip" {
 
 data "archive_file" "receiver_zip" {
   type        = "zip"
-  source_file = "${path.module}/receiver/receiver.js"
-  output_path = "${path.module}/receiver/receiver.zip"
+  source_file = "${path.module}/lambdas/receiver.js"
+  output_path = "${path.module}/lambdas/receiver.zip"
 }
 
 resource "aws_lambda_function" "invoker_lambda" {
@@ -34,18 +34,19 @@ resource "aws_lambda_function" "receiver_lambda" {
   runtime       = "nodejs10.x"
   memory_size   = 256
   timeout       = var.receiver_timeout
-  source_code_hash = filebase64sha256(data.archive_file.receiver_zip.output_path)
+  source_code_hash = data.archive_file.receiver_zip.output_base64sha256
 
   environment {
     variables = {
-      S3_BUCKET = aws_s3_bucket.receiver.bucket
+      SQS_QUEUE_URL = aws_sqs_queue.receiver_queue.id
+      GLUE_SQS_QUEUE_URL = aws_sqs_queue.receiver_queue_glue.id
     }
   }
 }
 
 resource "aws_api_gateway_rest_api" "receiver" {
   name = "controlshift-webhook-receiver"
-  description = "Receives ControlShift webhooks and dumps them into an S3 bucket"
+  description = "Receives ControlShift webhooks and dumps them onto an SQS queue"
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -85,6 +86,7 @@ resource "aws_api_gateway_integration_response" "receiver" {
   response_templates = {
     "application/json" = ""
   }
+  depends_on = [aws_api_gateway_integration.request_method_integration]
 }
 
 resource "aws_api_gateway_integration" "request_method_integration" {
@@ -112,8 +114,20 @@ resource "aws_api_gateway_deployment" "deployment" {
 
   rest_api_id = aws_api_gateway_rest_api.receiver.id
   stage_name  = "production"
+}
 
-  variables = {
-    "S3_BUCKET" = aws_s3_bucket.receiver.bucket
-  }
+resource "aws_sqs_queue" "receiver_queue" {
+  name = "controlshift-received-webhooks"
+  visibility_timeout_seconds = 900
+}
+
+resource "aws_sqs_queue" "receiver_queue_glue" {
+  name = "controlshift-received-webhooks-glue"
+  visibility_timeout_seconds = 900
+}
+
+# there is no formal way to associate this resource, beyond ensuring the name matches.
+resource "aws_cloudwatch_log_group" "api_gateway_log_retention" {
+  name              = "API-Gateway-Execution-Logs_${aws_api_gateway_rest_api.receiver.id}/${aws_api_gateway_deployment.deployment.stage_name}"
+  retention_in_days = 5
 }

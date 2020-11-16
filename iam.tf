@@ -53,26 +53,20 @@ data "aws_iam_policy_document" "receiver_execution_policy" {
     resources = ["arn:aws:logs:*:*:*"]
   }
 
-  # allow the lambda to put files into the receiver bucket
+  # allow the receiver lambda to enqueue work
   statement {
     effect = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject"]
-    resources = ["arn:aws:s3:::${aws_s3_bucket.receiver.bucket}/*"]
+    actions = ["sqs:SendMessage"]
+    resources = ["arn:aws:sqs:${var.aws_region}:*:${aws_sqs_queue.receiver_queue.name}",
+                 "arn:aws:sqs:${var.aws_region}:*:${aws_sqs_queue.receiver_queue_glue.name}"]
   }
 }
 
-resource "aws_iam_role_policy" "lambda_invokes_lambda" {
-  name = "AllowsInvokerExecution"
-  role = aws_iam_role.invoker_lambda_role.id
-  policy = data.aws_iam_policy_document.invoker_execution_policy.json
-}
-
-resource "aws_iam_role_policy" "lambda_accesses_code_bucket" {
+resource "aws_iam_role_policy" "lambda_receiver" {
   name = "AllowsReceiverExecution"
   role = aws_iam_role.receiver_lambda_role.id
   policy = data.aws_iam_policy_document.receiver_execution_policy.json
 }
-
 
 resource "aws_iam_role" "api_gateway_role" {
   name = "APIGatewayRole"
@@ -103,7 +97,7 @@ resource "aws_iam_role" "loader_lambda_role" {
 }
 
 resource "aws_iam_role_policy" "lambda_loads_tables" {
-  name = "AllowsLoaderExecution"
+  name_prefix = "AllowsLoaderExecution"
   role = aws_iam_role.loader_lambda_role.id
   policy = data.aws_iam_policy_document.loader_execution_policy.json
 }
@@ -136,7 +130,9 @@ data "aws_iam_policy_document" "loader_execution_policy" {
       "kms:GetKeyPolicy",
       "kms:Decrypt"
     ]
-    resources = ["*"]
+    resources = [
+      aws_kms_key.lambda_config.arn
+    ]
   }
 
   statement {
@@ -147,11 +143,17 @@ data "aws_iam_policy_document" "loader_execution_policy" {
       "s3:List*",
     ]
     resources = [
-      aws_s3_bucket.receiver.arn,
       aws_s3_bucket.manifest.arn,
-      "${aws_s3_bucket.receiver.arn}/*",
       "${aws_s3_bucket.manifest.arn}/*"
     ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = ["s3:GetObject", "s3:ListBucket"]
+    resources = [
+      "arn:aws:s3:::agra-data-exports-${var.controlshift_environment}",
+      "arn:aws:s3:::agra-data-exports-${var.controlshift_environment}/*"]
   }
 
   statement {
@@ -165,7 +167,10 @@ data "aws_iam_policy_document" "loader_execution_policy" {
       "sns:Subscribe",
       "sns:Unsubscribe"
     ]
-    resources = ["*"]
+    resources = [
+      aws_sns_topic.success_sns_topic.arn,
+      aws_sns_topic.failure_sns_topic.arn
+    ]
   }
 
   statement {
@@ -177,4 +182,88 @@ data "aws_iam_policy_document" "loader_execution_policy" {
     ]
     resources = ["arn:aws:logs:*:*:*"]
   }
+
+  # allow lambda to be wired up to the queue. These are the minimum permissions for the SQS Lambda Executor.
+  statement {
+    effect = "Allow"
+    actions = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+    resources = ["arn:aws:sqs:${var.aws_region}:*:${aws_sqs_queue.receiver_queue.name}"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface"]
+    resources = ["*"]
+  }
+}
+
+data "aws_iam_policy_document" "run_glue_job_execution_policy" {
+  # allow the lambda to write cloudwatch logs
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+
+  # allow the lambda to enqueue work
+  statement {
+    effect = "Allow"
+    actions = [ "glue:StartJobRun" ]
+    resources = [ aws_glue_job.signatures_full.arn ]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_run_glue_job" {
+  name = "AllowsRunGlueJobExecution"
+  role = aws_iam_role.run_glue_job_lambda_role.id
+  policy = data.aws_iam_policy_document.run_glue_job_execution_policy.json
+}
+
+resource "aws_iam_role" "run_glue_job_lambda_role" {
+  name = "RunGlueJobLambdaRole"
+  description = "Used by the controlshift-run-glue-job Lambda for triggering AWS Glue job once the crawler finishes"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+data "aws_iam_policy_document" "run_glue_crawler_execution_policy" {
+  # allow the lambda to write cloudwatch logs
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+
+  # allow the lambda to enqueue work
+  statement {
+    effect = "Allow"
+    actions = [ "glue:StartCrawler" ]
+    resources = [ aws_glue_crawler.signatures_crawler.arn ]
+  }
+
+  # allow glue lambda to be wired up to the queue. These are the minimum permissions for the SQS Lambda Executor.
+  statement {
+    effect = "Allow"
+    actions = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+    resources = ["arn:aws:sqs:${var.aws_region}:*:${aws_sqs_queue.receiver_queue_glue.name}"]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_run_glue_crawler" {
+  name = "AllowsRunGlueCrawlerExecution"
+  role = aws_iam_role.run_glue_crawler_lambda_role.id
+  policy = data.aws_iam_policy_document.run_glue_crawler_execution_policy.json
+}
+
+resource "aws_iam_role" "run_glue_crawler_lambda_role" {
+  name = "RunGlueCrawlerLambdaRole"
+  description = "Used by the controlshift-run-glue-crawler Lambda for triggering AWS Glue crawler when a new signatures table full data export is available."
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 }
