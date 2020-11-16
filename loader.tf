@@ -34,14 +34,6 @@ resource "aws_sns_topic" "success_sns_topic" {
   policy = data.aws_iam_policy_document.success_sns_notification_policy.json
 }
 
-<<<<<<< HEAD
-resource "aws_sns_topic" "failure_sns_topic" {
-  depends_on = [aws_lambda_function.loader]
-
-  name = var.failure_topic_name
-  policy = data.aws_iam_policy_document.failure_sns_notification_policy.json
-}
-
 =======
 >>>>>>> f05defd33ceaaed7622d686c4f04030929973478
 data "aws_iam_policy_document" "success_sns_notification_policy" {

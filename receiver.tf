@@ -10,22 +10,6 @@ data "archive_file" "receiver_zip" {
   output_path = "${path.module}/lambdas/receiver.zip"
 }
 
-resource "aws_lambda_function" "invoker_lambda" {
-  filename = data.archive_file.invoker_zip.output_path
-  function_name = "controlshift-webhook-handler-invoker"
-  role          = aws_iam_role.invoker_lambda_role.arn
-  handler       = "invoker.handler"
-  runtime       = "nodejs10.x"
-  timeout       = 30
-  source_code_hash = filebase64sha256(data.archive_file.invoker_zip.output_path)
-
-  environment {
-    variables = {
-      S3_BUCKET = aws_s3_bucket.receiver.bucket
-    }
-  }
-}
-
 resource "aws_lambda_function" "receiver_lambda" {
   filename = data.archive_file.receiver_zip.output_path
   function_name = "controlshift-webhook-handler"
