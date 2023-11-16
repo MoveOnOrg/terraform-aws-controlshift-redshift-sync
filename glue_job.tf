@@ -51,14 +51,35 @@ resource "aws_s3_bucket" "glue_resources" {
   }
 }
 
-data "template_file" "signatures_script" {
-  template = file("${path.module}/templates/signatures_job.py.tftpl")
-  vars = {
+locals {
+  # Unsupported column types read from CSV files: all of these will be read as 'string'
+  unsupported_input_column_types = [
+    "boolean",
+    "character varying.*",
+    "decimal.*",
+    "hstore",
+    "jsonb",
+    "numeric.*",
+    "timestamp"
+  ]
+
+  # Unsupported columnt types for Redshift: these will be replaced by the mapped type
+  unsupported_output_column_types = {
+    "hstore" = "string"
+    "jsonb" = "string"
+    "numeric\\(3,2\\)" = "decimal(3,2)"
+    "timestamp without time zone" = "timestamp"
+  }
+
+  signatures_script = templatefile("${path.module}/templates/signatures_job.py.tftpl", {
     catalog_database_name = aws_glue_catalog_database.catalog_db.name
+    unsupported_input_column_types = local.unsupported_input_column_types
+    unsupported_output_column_types = local.unsupported_output_column_types
     redshift_database_name = var.redshift_database_name
     redshift_schema = var.redshift_schema
     redshift_connection_name = aws_glue_connection.redshift_connection.name
-  }
+    signatures_table_columns = local.signatures_table_columns
+  })
 }
 
 resource "aws_s3_bucket_object" "signatures_script" {
