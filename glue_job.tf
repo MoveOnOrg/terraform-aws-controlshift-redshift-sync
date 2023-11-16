@@ -4,6 +4,8 @@ resource "aws_glue_catalog_database" "catalog_db" {
 
 locals {
   signatures_s3_path = "s3://agra-data-exports-${var.controlshift_environment}/${var.controlshift_organization_slug}/full/signatures"
+  signatures_table_index = index(local.parsed_bulk_data_schemas.tables.*.table.name, "signatures")
+  signatures_table_columns = local.parsed_bulk_data_schemas.tables[local.signatures_table_index].table.columns
 }
 
 resource "aws_glue_crawler" "signatures_crawler" {
