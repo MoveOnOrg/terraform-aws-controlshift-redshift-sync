@@ -12,14 +12,6 @@ resource "aws_glue_crawler" "signatures_crawler" {
   database_name = aws_glue_catalog_database.catalog_db.name
   name = "${var.controlshift_environment}_full_signatures"
   role = aws_iam_role.glue_service_role.arn
-  configuration = jsonencode(
-      {
-        Grouping = {
-            TableGroupingPolicy = "CombineCompatibleSchemas"
-          }
-        Version  = 1
-      }
-  )
 
   s3_target {
     path = local.signatures_s3_path
@@ -28,25 +20,19 @@ resource "aws_glue_crawler" "signatures_crawler" {
 
 resource "aws_s3_bucket" "glue_resources" {
   bucket = var.glue_scripts_bucket_name
+}
 
-  acl = "private"
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "AES256"
-      }
-    }
-  }
+resource "aws_s3_bucket_acl" "glue_resources" {
+  bucket = aws_s3_bucket.glue_resources.id
+  acl    = "private"
+}
 
-  lifecycle_rule {
-    id      = "Remove temp files over a week old"
-    abort_incomplete_multipart_upload_days = 0
-    enabled = true
-    prefix = "production/temp/"
+resource "aws_s3_bucket_server_side_encryption_configuration" "glue_resources" {
+  bucket = aws_s3_bucket.glue_resources.bucket
 
-    expiration {
-      days = 7
-      expired_object_delete_marker = false
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "AES256"
     }
   }
 }
@@ -70,11 +56,8 @@ locals {
     "numeric\\(3,2\\)" = "decimal(3,2)"
     "timestamp without time zone" = "timestamp"
   }
-}
 
-data "template_file" "signatures_script" {
-  template = file("${path.module}/templates/signatures_job.py.tftpl")
-  vars = {
+  signatures_script = templatefile("${path.module}/templates/signatures_job.py.tftpl", {
     catalog_database_name = aws_glue_catalog_database.catalog_db.name
     unsupported_input_column_types = local.unsupported_input_column_types
     unsupported_output_column_types = local.unsupported_output_column_types
@@ -82,15 +65,15 @@ data "template_file" "signatures_script" {
     redshift_schema = var.redshift_schema
     redshift_connection_name = aws_glue_connection.redshift_connection.name
     signatures_table_columns = local.signatures_table_columns
-  }
+  })
 }
 
-resource "aws_s3_bucket_object" "signatures_script" {
+resource "aws_s3_object" "signatures_script" {
   bucket = aws_s3_bucket.glue_resources.id
   key = "${var.controlshift_environment}/signatures_job.py"
   acl = "private"
 
-  content = data.template_file.signatures_script.rendered
+  content = local.signatures_script
 }
 
 resource "aws_iam_role" "glue_service_role" {
@@ -179,8 +162,6 @@ resource "aws_glue_job" "signatures_full" {
   name = "cs-${var.controlshift_environment}-signatures-full"
   connections = [ aws_glue_connection.redshift_connection.name ]
   glue_version = "3.0"
-  number_of_workers = 9
-  worker_type = "G.1X"
   default_arguments = {
     "--TempDir": "s3://${aws_s3_bucket.glue_resources.bucket}/${var.controlshift_environment}/temp",
     "--job-bookmark-option": "job-bookmark-disable",
