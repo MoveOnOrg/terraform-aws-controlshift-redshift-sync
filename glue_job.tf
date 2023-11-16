@@ -70,8 +70,11 @@ locals {
     "numeric\\(3,2\\)" = "decimal(3,2)"
     "timestamp without time zone" = "timestamp"
   }
+}
 
-  signatures_script = templatefile("${path.module}/templates/signatures_job.py.tftpl", {
+data "template_file" "signatures_script" {
+  template = file("${path.module}/templates/signatures_job.py.tftpl")
+  vars = {
     catalog_database_name = aws_glue_catalog_database.catalog_db.name
     unsupported_input_column_types = local.unsupported_input_column_types
     unsupported_output_column_types = local.unsupported_output_column_types
@@ -79,7 +82,7 @@ locals {
     redshift_schema = var.redshift_schema
     redshift_connection_name = aws_glue_connection.redshift_connection.name
     signatures_table_columns = local.signatures_table_columns
-  })
+  }
 }
 
 resource "aws_s3_bucket_object" "signatures_script" {
