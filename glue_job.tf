@@ -51,8 +51,8 @@ locals {
 
   # Unsupported columnt types for Redshift: these will be replaced by the mapped type
   unsupported_output_column_types = {
-    "hstore" = "string"
-    "jsonb" = "string"
+    "hstore" = "character varying"
+    "jsonb" = "character varying"
     "numeric\\(3,2\\)" = "decimal(3,2)"
     "timestamp without time zone" = "timestamp"
   }
