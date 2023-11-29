@@ -54,10 +54,6 @@ resource "aws_s3_bucket_acl" "glue_resources" {
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "glue_resources" {
   bucket = aws_s3_bucket.glue_resources.bucket
-   expiration {
-      days = 7
-      expired_object_delete_marker = false
-   }
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "AES256"
