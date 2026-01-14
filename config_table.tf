@@ -62,7 +62,7 @@ locals {
       kind = "full"
       bulk_data_table = name
       redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
-      redshift_database_name: var.redshift_database_name
+      redshift_database_name = var.redshift_database_name
       redshift_port = data.aws_redshift_cluster.sync_data_target.port
       redshift_username = var.redshift_username
       redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
@@ -85,7 +85,7 @@ locals {
       kind = "incremental"
       bulk_data_table = name
       redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
-      redshift_database_name: var.redshift_database_name
+      redshift_database_name = var.redshift_database_name
       redshift_port = data.aws_redshift_cluster.sync_data_target.port
       redshift_username = var.redshift_username
       redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
