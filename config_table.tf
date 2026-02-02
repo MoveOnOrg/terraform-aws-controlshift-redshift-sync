@@ -13,12 +13,12 @@ resource "aws_dynamodb_table" "loader_config" {
 }
 
 resource "aws_dynamodb_table_item" "load_config_full_items" {
-  for_each = toset([for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]])
+  for_each = toset(local.table_names)
 
   table_name = aws_dynamodb_table.loader_config.name
   hash_key   = aws_dynamodb_table.loader_config.hash_key
 
-  item = data.template_file.loader_config_full_item[each.key].rendered
+  item = local.loader_config_full_items[each.key]
 
   lifecycle {
     ignore_changes = [
@@ -30,42 +30,16 @@ resource "aws_dynamodb_table_item" "load_config_full_items" {
 
       item
     ]
-  }
-}
-
-data "template_file" "loader_config_full_item" {
-  for_each = toset([for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]])
-
-  template = "${file("${path.module}/config_item.json")}"
-  vars = {
-    kind = "full"
-    bulk_data_table = each.key
-    redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
-    redshift_database_name: var.redshift_database_name
-    redshift_port = data.aws_redshift_cluster.sync_data_target.port
-    redshift_username = var.redshift_username
-    redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
-    schema = var.redshift_schema
-    s3_bucket = "agra-data-exports-${var.controlshift_environment}"
-    manifest_bucket = aws_s3_bucket.manifest.bucket
-    manifest_prefix = var.manifest_prefix
-    failed_manifest_prefix = var.failed_manifest_prefix
-    success_topic_arn = aws_sns_topic.success_sns_topic.arn
-    failure_topic_arn = aws_sns_topic.failure_sns_topic.arn
-    current_batch = random_id.current_batch.b64_url
-    column_list = data.http.column_list[each.key].body
-    truncate_target = true
-    compress = try(local.parsed_bulk_data_schemas["settings"]["compression_format"], "")
   }
 }
 
 resource "aws_dynamodb_table_item" "load_config_incremental_items" {
-  for_each = toset([for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]])
+  for_each = toset(local.table_names)
 
   table_name = aws_dynamodb_table.loader_config.name
   hash_key   = aws_dynamodb_table.loader_config.hash_key
 
-  item = data.template_file.loader_config_incremental_item[each.key].rendered
+  item = local.loader_config_incremental_items[each.key]
 
   lifecycle {
     ignore_changes = [
@@ -80,29 +54,53 @@ resource "aws_dynamodb_table_item" "load_config_incremental_items" {
   }
 }
 
-data "template_file" "loader_config_incremental_item" {
-  for_each = toset([for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]])
+locals {
+  table_names = [for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]]
 
-  template = "${file("${path.module}/config_item.json")}"
-  vars = {
-    kind = "incremental"
-    bulk_data_table = each.key
-    redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
-    redshift_database_name: var.redshift_database_name
-    redshift_port = data.aws_redshift_cluster.sync_data_target.port
-    redshift_username = var.redshift_username
-    redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
-    schema = var.redshift_schema
-    s3_bucket = "agra-data-exports-${var.controlshift_environment}"
-    manifest_bucket = aws_s3_bucket.manifest.bucket
-    manifest_prefix = var.manifest_prefix
-    failed_manifest_prefix = var.failed_manifest_prefix
-    success_topic_arn = aws_sns_topic.success_sns_topic.arn
-    failure_topic_arn = aws_sns_topic.failure_sns_topic.arn
-    current_batch = random_id.current_batch.b64_url
-    column_list = data.http.column_list[each.key].body
-    truncate_target = false
-    compress = try(local.parsed_bulk_data_schemas["settings"]["compression_format"], "")
+  loader_config_full_items = {
+    for name in local.table_names : name => templatefile("${path.module}/config_item.json", {
+      kind = "full"
+      bulk_data_table = name
+      redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
+      redshift_database_name = var.redshift_database_name
+      redshift_port = data.aws_redshift_cluster.sync_data_target.port
+      redshift_username = var.redshift_username
+      redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
+      schema = var.redshift_schema
+      s3_bucket = "agra-data-exports-${var.controlshift_environment}"
+      manifest_bucket = aws_s3_bucket.manifest.bucket
+      manifest_prefix = var.manifest_prefix
+      failed_manifest_prefix = var.failed_manifest_prefix
+      success_topic_arn = aws_sns_topic.success_sns_topic.arn
+      failure_topic_arn = aws_sns_topic.failure_sns_topic.arn
+      current_batch = random_id.current_batch.b64_url
+      column_list = data.http.column_list[name].body
+      truncate_target = true
+      compress = try(local.parsed_bulk_data_schemas["settings"]["compression_format"], "")
+    })
+  }
+
+  loader_config_incremental_items = {
+    for name in local.table_names : name => templatefile("${path.module}/config_item.json", {
+      kind = "incremental"
+      bulk_data_table = name
+      redshift_endpoint = data.aws_redshift_cluster.sync_data_target.endpoint
+      redshift_database_name = var.redshift_database_name
+      redshift_port = data.aws_redshift_cluster.sync_data_target.port
+      redshift_username = var.redshift_username
+      redshift_password = aws_kms_ciphertext.redshift_password.ciphertext_blob
+      schema = var.redshift_schema
+      s3_bucket = "agra-data-exports-${var.controlshift_environment}"
+      manifest_bucket = aws_s3_bucket.manifest.bucket
+      manifest_prefix = var.manifest_prefix
+      failed_manifest_prefix = var.failed_manifest_prefix
+      success_topic_arn = aws_sns_topic.success_sns_topic.arn
+      failure_topic_arn = aws_sns_topic.failure_sns_topic.arn
+      current_batch = random_id.current_batch.b64_url
+      column_list = data.http.column_list[name].body
+      truncate_target = false
+      compress = try(local.parsed_bulk_data_schemas["settings"]["compression_format"], "")
+    })
   }
 }
 
@@ -134,11 +132,11 @@ data "http" "bulk_data_schemas" {
 }
 
 locals {
-  parsed_bulk_data_schemas = jsondecode(data.http.bulk_data_schemas.body)
+  parsed_bulk_data_schemas = jsondecode(data.http.bulk_data_schemas.response_body)
 }
 
 data "http" "column_list" {
-  for_each = toset([for table in local.parsed_bulk_data_schemas["tables"] : table["table"]["name"]])
+  for_each = toset(local.table_names)
 
   url = "https://${var.controlshift_hostname}/api/bulk_data/schema/columns?table=${each.key}"
 }

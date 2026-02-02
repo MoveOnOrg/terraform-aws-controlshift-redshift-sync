@@ -26,45 +26,69 @@ resource "aws_glue_crawler" "signatures_crawler" {
 
 resource "aws_s3_bucket" "glue_resources" {
   bucket = var.glue_scripts_bucket_name
+}
 
-  acl = "private"
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "AES256"
-      }
-    }
+# Ownership controls block is required to support ACLs.
+resource "aws_s3_bucket_ownership_controls" "glue_resources" {
+  bucket = aws_s3_bucket.glue_resources.id
+  rule {
+    object_ownership = "ObjectWriter"
   }
+}
 
-  lifecycle_rule {
-    id      = "Remove temp files over a week old"
-    abort_incomplete_multipart_upload_days = 0
-    enabled = true
-    prefix = "production/temp/"
+resource "aws_s3_bucket_acl" "glue_resources" {
+  depends_on = [aws_s3_bucket_ownership_controls.glue_resources]
 
-    expiration {
-      days = 7
-      expired_object_delete_marker = false
+  bucket = aws_s3_bucket.glue_resources.id
+  acl = "private"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "glue_resources" {
+  bucket = aws_s3_bucket.glue_resources.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
     }
   }
 }
 
-data "template_file" "signatures_script" {
-  template = file("${path.module}/templates/signatures_job.py.tpl")
-  vars = {
+resource "aws_s3_bucket_lifecycle_configuration" "glue_resources" {
+  bucket = aws_s3_bucket.glue_resources.id
+
+  rule {
+    id = "Remove temp files over a week old"
+    status = "Enabled"
+
+    filter {
+      prefix = "production/temp/"
+    }
+
+    expiration {
+      days = 7
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7 # Note: must be greater than 0
+    }
+  }
+}
+
+locals {
+  signatures_script = templatefile("${path.module}/templates/signatures_job.py.tpl", {
     catalog_database_name = aws_glue_catalog_database.catalog_db.name
     redshift_database_name = var.redshift_database_name
     redshift_schema = var.redshift_schema
     redshift_connection_name = aws_glue_connection.redshift_connection.name
-  }
+  })
 }
 
-resource "aws_s3_bucket_object" "signatures_script" {
+resource "aws_s3_object" "signatures_script" {
   bucket = aws_s3_bucket.glue_resources.id
   key = "${var.controlshift_environment}/signatures_job.py"
   acl = "private"
 
-  content = data.template_file.signatures_script.rendered
+  content = local.signatures_script
 }
 
 resource "aws_iam_role" "glue_service_role" {
