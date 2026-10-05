@@ -8,7 +8,9 @@ resource "aws_lambda_function" "loader" {
   timeout       = 900
 
   # Guarantees and caps this function to exactly 10 concurrent executions.
-  # Setting this to 0 will completely disable the function from executing.
+  # Setting this to 0 will completely disable the function from executing,
+  # and leaving it unset will allow the function to scale without any
+  # concurrency limits.
   reserved_concurrent_executions = 10 
 
   vpc_config {
