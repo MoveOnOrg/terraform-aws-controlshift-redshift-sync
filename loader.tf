@@ -7,6 +7,10 @@ resource "aws_lambda_function" "loader" {
   runtime       = "nodejs16.x"
   timeout       = 900
 
+  # Guarantees and caps this function to exactly 10 concurrent executions.
+  # Setting this to 0 will completely disable the function from executing.
+  reserved_concurrent_executions = 10 
+
   vpc_config {
     subnet_ids         = var.lambda_loader_subnet_ids
     security_group_ids = var.lambda_loader_security_group_ids
